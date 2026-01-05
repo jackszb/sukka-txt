@@ -1,0 +1,59 @@
+name: Update Sukka Domain List
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 每天 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch and extract domains
+        run: |
+          set -e
+
+          curl -fsSL \
+            https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json \
+            -o reject.json
+
+          python3 - << 'EOF'
+          import json
+
+          with open("reject.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          domains = set()
+
+          for rule in data.get("rules", []):
+              for d in rule.get("domain", []):
+                  d = d.strip()
+                  if d:
+                      domains.add(d)
+
+              for d in rule.get("domain_suffix", []):
+                  d = d.strip()
+                  if d.startswith("."):
+                      d = d[1:]
+                  if d:
+                      domains.add(d)
+
+          with open("sukka.txt", "w", encoding="utf-8") as f:
+              for d in sorted(domains):
+                  f.write(d + "\n")
+          EOF
+
+          rm -f reject.json
+
+      - name: Commit and push
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+          git add sukka.txt
+          git commit -m "Auto update sukka domain list" || echo "No changes"
+          git push
